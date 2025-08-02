@@ -45,6 +45,7 @@ export default function Component() {
   const [isCalibrating, setIsCalibrating] = useState(false)
   const [calibrationStep, setCalibrationStep] = useState(0)
   const [eyeTrackingEnabled, setEyeTrackingEnabled] = useState(true)
+  const [isMounted, setIsMounted] = useState(false)
 
   const streamRef = useRef<MediaStream | null>(null)
 
@@ -69,8 +70,8 @@ export default function Component() {
 
   // Cursor movement tracking - using refs to avoid React state issues
   const trackingDataRef = useRef({
-    cursorPosition: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
-    prevCursorPosition: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
+    cursorPosition: { x: 0, y: 0 },
+    prevCursorPosition: { x: 0, y: 0 },
     cursorVelocity: { x: 0, y: 0 },
     isTracking: false,
     isCalibrated: false,
@@ -94,6 +95,22 @@ export default function Component() {
   const DINO_HEIGHT = 40
   const OBSTACLE_WIDTH = 20
   const OBSTACLE_HEIGHT = 40
+
+  // Check if component is mounted (client-side)
+  useEffect(() => {
+    setIsMounted(true)
+    // Initialize cursor position safely
+    if (typeof window !== "undefined") {
+      trackingDataRef.current.cursorPosition = {
+        x: window.innerWidth / 2,
+        y: window.innerHeight / 2,
+      }
+      trackingDataRef.current.prevCursorPosition = {
+        x: window.innerWidth / 2,
+        y: window.innerHeight / 2,
+      }
+    }
+  }, [])
 
   // Update tracking data when React state changes
   useEffect(() => {
@@ -139,6 +156,8 @@ export default function Component() {
 
   // Initialize camera
   const startCamera = useCallback(async () => {
+    if (typeof window === "undefined") return
+
     try {
       console.log("📹 Starting camera...")
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -402,6 +421,8 @@ export default function Component() {
 
   // Main animation loop - completely independent
   useEffect(() => {
+    if (!isMounted || typeof window === "undefined") return
+
     let animationId: number
     let isRunning = true
 
@@ -542,7 +563,7 @@ export default function Component() {
         cancelAnimationFrame(animationId)
       }
     }
-  }, []) // Empty dependency array - runs once
+  }, [isMounted]) // Depend on isMounted
 
   // Start eye tracking calibration
   const startEyeCalibration = useCallback(() => {
@@ -553,7 +574,7 @@ export default function Component() {
 
   // Handle calibration point
   const handleCalibrationPoint = useCallback(() => {
-    if (!faceDetected || calibrationStep >= calibrationTargets.length) return
+    if (!faceDetected || calibrationStep >= calibrationTargets.length || typeof window === "undefined") return
 
     // Validate that we have good eye data
     if (!eyeData.gazeX || !eyeData.gazeY || (!eyeData.left.detected && !eyeData.right.detected)) {
@@ -598,8 +619,11 @@ export default function Component() {
       }
       setCenterPoint(newCenterPoint)
       setIsCalibrated(true)
-      const initialPosition = { x: window.innerWidth / 2, y: window.innerHeight / 2 }
-      updateCursorPosition(initialPosition.x, initialPosition.y)
+
+      if (typeof window !== "undefined") {
+        const initialPosition = { x: window.innerWidth / 2, y: window.innerHeight / 2 }
+        updateCursorPosition(initialPosition.x, initialPosition.y)
+      }
       console.log("✅ Head calibrated successfully", newCenterPoint)
     } else {
       console.log("❌ No face detected for calibration")
@@ -732,6 +756,18 @@ export default function Component() {
     }
   }, [stopCamera])
 
+  // Don't render until mounted to avoid hydration issues
+  if (!isMounted) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-lg text-gray-600">Loading Eye Tracking System...</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
       {/* Custom Cursor - using ref for direct DOM manipulation */}
@@ -740,8 +776,8 @@ export default function Component() {
           ref={cursorRef}
           className="fixed pointer-events-none z-50 transition-all duration-75"
           style={{
-            left: `${window.innerWidth / 2 - 12}px`,
-            top: `${window.innerHeight / 2 - 12}px`,
+            left: `${typeof window !== "undefined" ? window.innerWidth / 2 - 12 : 0}px`,
+            top: `${typeof window !== "undefined" ? window.innerHeight / 2 - 12 : 0}px`,
             transform: "translate(-50%, -50%)",
           }}
         >
@@ -760,7 +796,7 @@ export default function Component() {
       )}
 
       {/* Enhanced calibration overlay */}
-      {isCalibrating && (
+      {isCalibrating && typeof window !== "undefined" && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-40 flex items-center justify-center">
           <div className="bg-white p-6 rounded-lg text-center">
             <h3 className="text-xl font-bold mb-4">Eye Tracking Calibration</h3>
